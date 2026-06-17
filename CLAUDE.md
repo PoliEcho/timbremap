@@ -193,10 +193,15 @@ Implemented in Postgres via the Supabase CLI. Migrations:
 - `supabase/migrations/20260617000008_engagement_view.sql` — `item_engagement` view (per item: vote/like/review counts + avg_x/avg_y + card columns). Backs browse. **Recreated by 9.**
 - `supabase/migrations/20260617000009_item_genres_array.sql` — replaces `items.genre` with `items.genres text[]` (GIN-indexed; multiple genres/tags per item), migrates existing values, and recreates `item_engagement` with `genres`.
 - `supabase/migrations/20260617000010_admin_and_moderation.sql` — adds `profiles.is_admin` (bool) + an `is_admin(uid)` SECURITY DEFINER helper, admin RLS override policies (update/delete **any** item; delete **any** review), tightens the items insert policy so non-admins may only insert `status='pending'` gear, and bootstraps the first admin (`oskar.smotex@gmail.com`).
+- `supabase/migrations/20260617000011_profiles_service_role_grant.sql` — grants `service_role` full table privileges on `profiles` (admin user-management needs them; `service_role` bypasses RLS but still needs table grants).
+- `supabase/migrations/20260617000012_fix_profiles_admin_escalation.sql` — **SECURITY FIX (privilege escalation).** The init migration's table-wide `grant update on public.profiles to authenticated` let any logged-in user `PATCH /rest/v1/profiles?id=eq.<self> {is_admin:true}` straight through PostgREST — **RLS is row-level, not column-level**, so the own-row update policy passed it through, bypassing `setUserAdmin`'s app guard. Fix revokes the table-wide UPDATE and re-grants UPDATE only on `display_name`; `is_admin` is now writable solely via the service-role client. Also demotes all non-bootstrap admins to remediate exploited accounts. **Rule: never grant table-wide UPDATE on a table with a privilege/role column — use column grants.**
 
 - **profiles** — `id` (FK `auth.users`), `display_name`, `is_admin` (bool, default false),
   `created_at`. Auto-created on signup via the `handle_new_user` trigger (always non-admin); flip
-  `is_admin` manually to grant admin. Auth itself is handled by Supabase Auth.
+  `is_admin` manually to grant admin. Auth itself is handled by Supabase Auth. **`is_admin` is
+  writable only by the service-role client** — `authenticated` has a column-level UPDATE grant on
+  `display_name` only (migration `…000012`), so users cannot self-escalate via the public API even
+  though RLS lets them update their own row.
 - **items** — `id`, `type` (`album|song|headphones|iem|speaker` enum), `slug` (unique), `title`,
   `artist`, `album`, `manufacturer`, `price` (numeric, gear only — assumed USD), `genres`
   (`text[]`, music only — multiple subgenre tags from Last.fm), `image_url`, `release_date`,
