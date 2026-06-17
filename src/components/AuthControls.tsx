@@ -44,6 +44,10 @@ export default async function AuthControls() {
           My Favorites
         </Link>
         <span className="text-zinc-600">·</span>
+        <Link href="/submit-music" className="text-indigo-400 hover:underline">
+          Submit music
+        </Link>
+        <span className="text-zinc-600">·</span>
         <Link href="/submit-gear" className="text-indigo-400 hover:underline">
           Submit gear
         </Link>

@@ -566,6 +566,100 @@ export async function createGearItem(input: {
 }
 
 /**
+ * Create a user-submitted music item (album / song). Like gear, it is inserted
+ * `status='pending'` and stays private until an admin approves it. Runs as the
+ * signed-in user via the request-scoped client so RLS records `created_by` and
+ * forces the pending status. Returns the created item or an error message.
+ */
+export async function createMusicItem(input: {
+  type: Extract<ItemType, "album" | "song">;
+  title: string;
+  artist: string | null;
+  album: string | null;
+  genres: string[];
+  releaseDate: string | null;
+  imageUrl: string | null;
+}): Promise<{ item?: Item; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "You must be logged in to submit music." };
+
+  const base = slugify(`${input.artist ?? ""} ${input.title}`) || `${input.type}`;
+  // Music submissions have no external id; disambiguate with the user id.
+  const slug = await uniqueSlug(supabase, base, user.id.replace(/-/g, ""));
+
+  const { data, error } = await supabase
+    .from("items")
+    .insert({
+      type: input.type,
+      slug,
+      title: input.title,
+      artist: input.artist,
+      album: input.type === "song" ? input.album : null,
+      genres: input.genres,
+      image_url: input.imageUrl,
+      release_date: input.releaseDate,
+      created_by: user.id,
+      status: "pending",
+    })
+    .select("*")
+    .single();
+
+  if (error) return { error: error.message };
+  return { item: data as Item };
+}
+
+/**
+ * Admin-only edit of any item's editable fields, including columns the
+ * `authenticated` role cannot UPDATE (artist/album/genres/description — see
+ * migrations ...000013/...000014). Uses the service-role client, which bypasses
+ * column grants and RLS, so callers MUST re-check `isCurrentUserAdmin()` first
+ * (the actions do). `slug`/`status`/`created_by`/`external_*` are never touched
+ * here — slug stays stable for SEO; status changes go through setItemStatus.
+ */
+export async function adminUpdateItem(
+  itemId: string,
+  patch: {
+    type?: ItemType;
+    title?: string;
+    artist?: string | null;
+    album?: string | null;
+    genres?: string[];
+    manufacturer?: string | null;
+    price?: number | null;
+    description?: string | null;
+    releaseDate?: string | null;
+    imageUrl?: string | null;
+  },
+): Promise<{ item?: Item; error?: string }> {
+  const admin = createAdminClient();
+  const update: Record<string, unknown> = {};
+  if (patch.type !== undefined) update.type = patch.type;
+  if (patch.title !== undefined) update.title = patch.title;
+  if (patch.artist !== undefined) update.artist = patch.artist;
+  if (patch.album !== undefined) update.album = patch.album;
+  if (patch.genres !== undefined) update.genres = patch.genres;
+  if (patch.manufacturer !== undefined) update.manufacturer = patch.manufacturer;
+  if (patch.price !== undefined) update.price = patch.price;
+  if (patch.description !== undefined) update.description = patch.description;
+  if (patch.releaseDate !== undefined) update.release_date = patch.releaseDate;
+  if (patch.imageUrl !== undefined) update.image_url = patch.imageUrl;
+
+  const { data, error } = await admin
+    .from("items")
+    .update(update)
+    .eq("id", itemId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  if (!data) return { error: "Item not found." };
+  return { item: data as Item };
+}
+
+/**
  * Update a gear item the signed-in user created. RLS restricts the write to the
  * owner (`created_by = auth.uid()`), so a non-owner gets zero rows back.
  */

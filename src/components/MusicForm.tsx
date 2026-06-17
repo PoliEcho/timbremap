@@ -2,28 +2,28 @@
 
 import { useActionState, useState } from "react";
 import Image from "next/image";
-import { submitGear, updateGear, type GearState } from "@/app/actions/gear";
+import { submitMusic, updateMusic, type MusicState } from "@/app/actions/music";
 import type { Item } from "@/lib/types";
 
 const TYPES = [
-  { value: "headphones", label: "Headphones" },
-  { value: "iem", label: "IEM" },
-  { value: "speaker", label: "Speaker" },
+  { value: "album", label: "Album" },
+  { value: "song", label: "Song" },
 ];
 
 /**
- * Create form when `initial` is omitted; edit form when an item is passed.
+ * Create form when `initial` is omitted; admin edit form when an item is passed.
  * `showDescription` reveals the admin-only description field (edit mode only).
  */
-export default function GearForm({
+export default function MusicForm({
   initial,
   showDescription = false,
 }: {
   initial?: Item;
   showDescription?: boolean;
 }) {
-  const action = initial ? updateGear.bind(null, initial.id) : submitGear;
-  const [state, formAction, pending] = useActionState<GearState, FormData>(action, null);
+  const action = initial ? updateMusic.bind(null, initial.id) : submitMusic;
+  const [state, formAction, pending] = useActionState<MusicState, FormData>(action, null);
+  const [type, setType] = useState(initial?.type === "song" ? "song" : "album");
   const [imageUrl, setImageUrl] = useState(initial?.image_url ?? "");
 
   return (
@@ -32,7 +32,8 @@ export default function GearForm({
         <span className="text-zinc-400">Type</span>
         <select
           name="type"
-          defaultValue={initial?.type ?? "headphones"}
+          value={type}
+          onChange={(e) => setType(e.target.value)}
           className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 outline-none focus:border-indigo-500"
         >
           {TYPES.map((t) => (
@@ -44,38 +45,48 @@ export default function GearForm({
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-400">Model</span>
+        <span className="text-zinc-400">Title</span>
         <input
           name="title"
           type="text"
           required
           defaultValue={initial?.title ?? ""}
-          placeholder="e.g. HD 600"
+          placeholder="e.g. Kid A"
           className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 outline-none focus:border-indigo-500"
         />
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-400">Manufacturer</span>
+        <span className="text-zinc-400">Artist</span>
         <input
-          name="manufacturer"
+          name="artist"
           type="text"
-          defaultValue={initial?.manufacturer ?? ""}
-          placeholder="e.g. Sennheiser"
+          defaultValue={initial?.artist ?? ""}
+          placeholder="e.g. Radiohead"
           className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 outline-none focus:border-indigo-500"
         />
       </label>
 
+      {type === "song" && (
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-zinc-400">Album (optional)</span>
+          <input
+            name="album"
+            type="text"
+            defaultValue={initial?.album ?? ""}
+            placeholder="e.g. Kid A"
+            className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 outline-none focus:border-indigo-500"
+          />
+        </label>
+      )}
+
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-400">Price in USD (optional)</span>
+        <span className="text-zinc-400">Genres (optional, comma-separated)</span>
         <input
-          name="price"
-          type="number"
-          min="0"
-          step="0.01"
-          inputMode="decimal"
-          defaultValue={initial?.price ?? ""}
-          placeholder="e.g. 399"
+          name="genres"
+          type="text"
+          defaultValue={initial?.genres?.join(", ") ?? ""}
+          placeholder="e.g. art rock, electronic"
           className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 outline-none focus:border-indigo-500"
         />
       </label>
@@ -91,13 +102,13 @@ export default function GearForm({
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-400">Image URL (optional)</span>
+        <span className="text-zinc-400">Cover image URL (optional)</span>
         <input
           name="image_url"
           type="url"
           value={imageUrl}
           onChange={(e) => setImageUrl(e.target.value)}
-          placeholder="https://…/product.jpg"
+          placeholder="https://…/cover.jpg"
           className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 outline-none focus:border-indigo-500"
         />
       </label>
@@ -105,7 +116,7 @@ export default function GearForm({
       {imageUrl && (
         <Image
           src={imageUrl}
-          alt="Gear image preview"
+          alt="Cover image preview"
           width={120}
           height={120}
           className="rounded-lg object-cover"
@@ -133,7 +144,7 @@ export default function GearForm({
         disabled={pending}
         className="rounded-md bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
       >
-        {pending ? "Saving…" : initial ? "Save changes" : "Submit gear"}
+        {pending ? "Saving…" : initial ? "Save changes" : "Submit"}
       </button>
     </form>
   );

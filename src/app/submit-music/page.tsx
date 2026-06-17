@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
-import GearForm from "@/components/GearForm";
+import MusicForm from "@/components/MusicForm";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
-  title: "Submit gear",
+  title: "Submit music",
   robots: { index: false, follow: false },
 };
 
-export default async function SubmitGearPage() {
+export default async function SubmitMusicPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -20,14 +20,13 @@ export default async function SubmitGearPage() {
     <AppShell>
       <div className="flex flex-col gap-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Submit gear</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Submit an album or song</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            Add a pair of headphones, IEMs, or a speaker to the compass. Submissions are
-            reviewed by an admin before they go public — once approved, anyone can place it
-            on the sound map.
+            Can&apos;t find it via search? Add it by hand. Submissions are reviewed by an
+            admin before they go public — once approved, anyone can place it on the compass.
           </p>
         </div>
-        <GearForm />
+        <MusicForm />
       </div>
     </AppShell>
   );

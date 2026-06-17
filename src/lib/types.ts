@@ -11,6 +11,7 @@ export interface Item {
   manufacturer: string | null;
   price: number | null;
   genres: string[];
+  description: string | null;
   image_url: string | null;
   release_date: string | null;
   external_source: string | null;

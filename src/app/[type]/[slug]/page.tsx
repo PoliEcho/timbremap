@@ -141,6 +141,7 @@ function buildJsonLd(
       "@type": "Product",
       name: item.title,
       category: item.type,
+      ...(item.description && { description: item.description }),
       ...(item.manufacturer && {
         brand: { "@type": "Brand", name: item.manufacturer },
       }),
@@ -164,6 +165,7 @@ function buildJsonLd(
       "@context": "https://schema.org",
       "@type": "MusicRecording",
       name: item.title,
+      ...(item.description && { description: item.description }),
       ...(item.artist && { byArtist: { "@type": "MusicGroup", name: item.artist } }),
       ...(item.album && { inAlbum: { "@type": "MusicAlbum", name: item.album } }),
       ...(item.genres.length > 0 && { genre: item.genres }),
@@ -180,6 +182,7 @@ function buildJsonLd(
     "@context": "https://schema.org",
     "@type": "MusicAlbum",
     name: item.title,
+    ...(item.description && { description: item.description }),
     ...(item.artist && { byArtist: { "@type": "MusicGroup", name: item.artist } }),
     ...(item.genres.length > 0 && { genre: item.genres }),
     ...(item.release_date && { datePublished: item.release_date }),
@@ -263,6 +266,9 @@ export default async function ItemPage({
             <h1 className="text-2xl font-bold tracking-tight">{item.title}</h1>
             {sub && <p className="text-zinc-400">{sub}</p>}
           </div>
+          {item.description && (
+            <p className="whitespace-pre-line text-sm text-zinc-300">{item.description}</p>
+          )}
           <dl className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between">
               <dt className="text-zinc-500">Type</dt>
@@ -360,7 +366,8 @@ export default async function ItemPage({
 
           {(isOwner || isAdmin) && (
             <div className="flex items-center gap-3 text-sm">
-              {GEAR_TYPES.includes(item.type) && (
+              {/* Gear: editable by owner or admin. Music: admins only. */}
+              {(GEAR_TYPES.includes(item.type) || isAdmin) && (
                 <>
                   <Link
                     href={`/${item.type}/${item.slug}/edit`}

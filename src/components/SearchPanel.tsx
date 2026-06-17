@@ -93,6 +93,19 @@ export default function SearchPanel() {
         </p>
       )}
 
+      {(mode === "album" || mode === "song") &&
+        !loading &&
+        query.trim().length >= 2 &&
+        results.length === 0 && (
+          <p className="text-sm text-zinc-500">
+            Nothing found.{" "}
+            <Link href="/submit-music" className="text-indigo-400 hover:underline">
+              Submit it manually
+            </Link>
+            .
+          </p>
+        )}
+
       <ul className="flex flex-col gap-1">
         {results.map((r) => (
           <li key={`${r.source}-${r.externalId}`}>

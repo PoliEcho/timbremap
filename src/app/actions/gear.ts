@@ -2,7 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createGearItem, updateGearItem, deleteOwnItem } from "@/lib/items";
+import {
+  createGearItem,
+  updateGearItem,
+  deleteOwnItem,
+  adminUpdateItem,
+  isCurrentUserAdmin,
+} from "@/lib/items";
 import type { ItemType } from "@/lib/types";
 
 export type GearState = { error: string } | null;
@@ -19,6 +25,7 @@ function parseGearForm(
   price: number | null;
   releaseDate: string | null;
   imageUrl: string | null;
+  description: string | null;
 } {
   const type = String(formData.get("type") ?? "");
   const title = String(formData.get("title") ?? "").trim();
@@ -26,6 +33,7 @@ function parseGearForm(
   const priceRaw = String(formData.get("price") ?? "").trim();
   const releaseDate = String(formData.get("release_date") ?? "").trim();
   const imageUrl = String(formData.get("image_url") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
 
   if (!GEAR_TYPES.includes(type as ItemType)) return { error: "Pick a gear type." };
   if (!title) return { error: "A model name is required." };
@@ -44,6 +52,7 @@ function parseGearForm(
     price,
     releaseDate: releaseDate || null,
     imageUrl: imageUrl || null,
+    description: description || null,
   };
 }
 
@@ -66,7 +75,13 @@ export async function updateGear(
   const parsed = parseGearForm(formData);
   if ("error" in parsed) return parsed;
 
-  const { item, error } = await updateGearItem(itemId, parsed);
+  // Description is admin-only and not UPDATE-grantable to `authenticated`, so an
+  // admin's edit goes through the service-role path; a non-admin owner's edit
+  // stays on the request-scoped, RLS-enforced path (and can't touch description).
+  const isAdmin = await isCurrentUserAdmin();
+  const { item, error } = isAdmin
+    ? await adminUpdateItem(itemId, parsed)
+    : await updateGearItem(itemId, parsed);
   if (error || !item) return { error: error ?? "Could not save changes." };
   redirect(`/${item.type}/${item.slug}`);
 }

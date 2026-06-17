@@ -195,6 +195,7 @@ Implemented in Postgres via the Supabase CLI. Migrations:
 - `supabase/migrations/20260617000010_admin_and_moderation.sql` — adds `profiles.is_admin` (bool) + an `is_admin(uid)` SECURITY DEFINER helper, admin RLS override policies (update/delete **any** item; delete **any** review), tightens the items insert policy so non-admins may only insert `status='pending'` gear, and bootstraps the first admin (`oskar.smotex@gmail.com`).
 - `supabase/migrations/20260617000011_profiles_service_role_grant.sql` — grants `service_role` full table privileges on `profiles` (admin user-management needs them; `service_role` bypasses RLS but still needs table grants).
 - `supabase/migrations/20260617000012_fix_profiles_admin_escalation.sql` — **SECURITY FIX (privilege escalation).** The init migration's table-wide `grant update on public.profiles to authenticated` let any logged-in user `PATCH /rest/v1/profiles?id=eq.<self> {is_admin:true}` straight through PostgREST — **RLS is row-level, not column-level**, so the own-row update policy passed it through, bypassing `setUserAdmin`'s app guard. Fix revokes the table-wide UPDATE and re-grants UPDATE only on `display_name`; `is_admin` is now writable solely via the service-role client. Also demotes all non-bootstrap admins to remediate exploited accounts. **Rule: never grant table-wide UPDATE on a table with a privilege/role column — use column grants.**
+- `supabase/migrations/20260617000014_item_description.sql` — adds `items.description` (text, any item type; shown on the item page + emitted as JSON-LD `description`). **Admin-only writable:** deliberately *not* added to the `authenticated` column-level UPDATE grant, so (like `artist`/`album`/`genres`) it's writable only via the service-role client (`adminUpdateItem`). Manual music submissions still INSERT fine — only UPDATE was narrowed in `…000013`; the insert RLS policy forces non-admins to `status='pending'`.
 - `supabase/migrations/20260617000013_fix_items_moderation_bypass.sql` — **SECURITY FIX (moderation bypass).** Same bug class as `…000012`: the init migration's table-wide `grant insert, update on public.items to authenticated` let a gear submitter `PATCH /rest/v1/items?id=eq.<own-pending-item> {status:'active'}` straight through PostgREST — the own-item update RLS policy (`created_by = auth.uid()`) passed it because **RLS is row-level, not column-level**, self-approving their pending gear and bypassing the admin `approveGear` flow. Fix revokes the table-wide UPDATE and re-grants UPDATE only on the columns `updateGearItem` writes (`type, title, manufacturer, price, image_url, release_date`); `status`/`created_by`/`external_*` are now writable solely via the service-role client. Paired code change: `setItemStatus` (approve/reject in `src/app/actions/admin.ts`) now uses `createAdminClient()` instead of the request-scoped client, since `status` is no longer UPDATE-grantable to `authenticated`. **Rule: never grant table-wide UPDATE on a table with a moderation/role column — use column grants.**
 
 - **profiles** — `id` (FK `auth.users`), `display_name`, `is_admin` (bool, default false),
@@ -205,9 +206,13 @@ Implemented in Postgres via the Supabase CLI. Migrations:
   though RLS lets them update their own row.
 - **items** — `id`, `type` (`album|song|headphones|iem|speaker` enum), `slug` (unique), `title`,
   `artist`, `album`, `manufacturer`, `price` (numeric, gear only — assumed USD), `genres`
-  (`text[]`, music only — multiple subgenre tags from Last.fm), `image_url`, `release_date`,
-  `external_source` (`deezer`), `external_id`, `created_by`, `status` (`active|pending|rejected`),
-  timestamps. Unique on (`external_source`, `external_id`).
+  (`text[]`, music only — multiple subgenre tags from Last.fm), `description` (text, any type —
+  **admin-only**, shown on the item page), `image_url`, `release_date`, `external_source` (`deezer`),
+  `external_id`, `created_by`, `status` (`active|pending|rejected`), timestamps. Unique on
+  (`external_source`, `external_id`). **`authenticated` may UPDATE only `type, title, manufacturer,
+  price, image_url, release_date` (column grant, migration `…000013`); `artist`, `album`, `genres`,
+  `description`, `status`, `created_by`, `external_*` are writable only via the service-role client**
+  (`adminUpdateItem`/`createMusicItem`'s insert/Deezer import/`setItemStatus`).
 - **votes** — `id`, `user_id`, `item_id`, `x`, `y` (doubles, **CHECK in [-1, 1]**), timestamps.
   **Unique (user_id, item_id)** — re-voting upserts the same row.
 - **reviews** — `id`, `user_id`, `item_id`, `body` (text, non-empty), timestamps.
@@ -261,20 +266,30 @@ Implemented in Postgres via the Supabase CLI. Migrations:
   mobile it renders a top bar with the logo + a hamburger button and slides the sidebar in as a
   fixed overlay drawer (backdrop, body-scroll lock, auto-close on route change); on desktop (`md:`)
   the drawer is `static` and always visible. Mobile `<main>` keeps normal page scroll.
-- **Gear moderation (BUILT):** submissions are inserted `status='pending'` (`createGearItem`) and
-  stay **private** — the item page `notFound()`s for anyone but the creator/admin, and all public
-  surfaces filter `status='active'` (browse, search, recommendations, genres, sitemap,
-  `getMostVoted`). The creator/admin sees an "Awaiting admin approval" banner on the item page.
-  Admins approve/reject from the **`/admin`** queue (`getPendingItems` + `approveGear`/`rejectGear`
-  in `src/app/actions/admin.ts`), or via inline Approve/Reject on the pending item page. Rejected
-  items get `status='rejected'` (still hidden).
+- **Submission + moderation (BUILT):** **any registered user can submit gear *and* music by hand.**
+  Gear → `/submit-gear` (`GearForm` → `submitGear` → `createGearItem`); albums/songs → `/submit-music`
+  (`MusicForm` → `submitMusic` → `createMusicItem`). Both insert `status='pending'` and stay
+  **private** — the item page `notFound()`s for anyone but the creator/admin, and all public surfaces
+  filter `status='active'` (browse, search, recommendations, genres, sitemap, `getMostVoted`). The
+  creator/admin sees an "Awaiting admin approval" banner on the item page. Admins approve/reject from
+  the **`/admin`** queue (`getPendingItems` + `approveGear`/`rejectGear` in `src/app/actions/admin.ts`),
+  or via inline Approve/Reject on the pending item page. Rejected items get `status='rejected'` (still
+  hidden). **Deezer-imported** albums/songs are still written server-side with the service-role key and
+  go straight to `status='active'` (auto-approved) — manual submission is the fallback for items search
+  can't find. The `/submit-music` empty-state link surfaces from album/song search (`SearchPanel`).
 - **Admin role (BUILT):** an admin is a profile with `is_admin = true`. **This supersedes the old
   `ADMIN_EMAILS` plan** — admin status lives in the DB so RLS can enforce it (see §6 RLS). The
   source of truth is the `is_admin(uid)` SECURITY DEFINER helper used by policies; the app checks it
-  via `isCurrentUserAdmin()` (`src/lib/items.ts`). Admin powers: approve/reject gear, edit/delete any
-  gear (Edit is gear-only; Delete is any item), delete any review (`Reviews.tsx` shows Delete on
-  others' reviews; `deleteReview` takes a `reviewId` and deletes by id for admins), and **user
-  administration** (see below). Admins get an **Admin** nav link (`AuthControls`); `/admin` is
+  via `isCurrentUserAdmin()` (`src/lib/items.ts`). Admin powers: approve/reject submissions,
+  **edit any item** — gear (creator can too) *and* albums/songs (**admin-only**: title, artist, album,
+  genres, release date, image, description), delete any item, delete any review (`Reviews.tsx` shows
+  Delete on others' reviews; `deleteReview` takes a `reviewId` and deletes by id for admins), and
+  **user administration** (see below). Admin edits route through **`adminUpdateItem`** (service-role,
+  re-checks `isCurrentUserAdmin()`) because `artist`/`album`/`genres`/`description` aren't
+  UPDATE-grantable to `authenticated`; a non-admin gear owner's edit stays on the request-scoped
+  `updateGearItem`. The item-page **Edit** link shows for gear (owner/admin) and music (admin only);
+  the edit page (`/[type]/[slug]/edit`) renders `GearForm` for gear and `MusicForm` for music and
+  reveals the description field only to admins (`showDescription`). Admins get an **Admin** nav link (`AuthControls`); `/admin` is
   `notFound()` for non-admins and disallowed in `robots.ts`. **Granting admin:** either from the
   `/admin` Users table (below), or register the account then `update public.profiles set
   is_admin = true where id = …` (the bootstrap migration does this for `oskar.smotex@gmail.com` if
@@ -286,6 +301,10 @@ Implemented in Postgres via the Supabase CLI. Migrations:
   and (b) listing emails / deleting auth users needs `auth.admin`. Both actions re-check
   `isCurrentUserAdmin()` and **guard against self-demotion / self-deletion** (anti-lockout).
   Deleting a user cascades to their rows via FK `on delete cascade`.
+- **Description (BUILT):** free-text `items.description` on **any** item type, shown on the item page
+  (`whitespace-pre-line`) and emitted as JSON-LD `description`. **Admin-only edit** — set via the edit
+  form's description field (revealed only to admins) → `adminUpdateItem` (service-role); the column is
+  not UPDATE-grantable to `authenticated`, so non-admin creators cannot set it.
 - **Price:** gear only, stored in `items.price`, **assumed USD app-wide** (no multi-currency).
   Shown on the gear page and emitted as a JSON-LD `Offer`. Add a currency column if other
   currencies are ever needed.
@@ -330,7 +349,8 @@ Implemented in Postgres via the Supabase CLI. Migrations:
   `src/app/favicon.ico` was removed).
 - **JSON-LD (type-aware, built in `[type]/[slug]/page.tsx`):** albums emit `MusicAlbum`, songs emit
   `MusicRecording` (+ `inAlbum` when known), gear emits `Product` (+ `brand`, + `offers` when priced).
-  All include a vote `InteractionCounter` and a `review` array when reviews exist.
+  All emit `description` when set and include a vote `InteractionCounter` and a `review` array when
+  reviews exist.
   **`AggregateRating` is intentionally NOT used** — the compass is a 2-axis placement, not a 1–5
   quality score, so a synthetic rating would be invalid structured data. Revisit if a real rating
   dimension is added.
@@ -374,13 +394,15 @@ Implemented in Postgres via the Supabase CLI. Migrations:
 **Albums, songs, and user-submitted gear all built end-to-end.** Next.js 16 (App Router) + TS +
 Tailwind 4, Supabase (local via the CLI/Docker stack), Deezer for album + song metadata.
 Implemented: a **browse home page** (sort by most voted/liked/reviewed/bassy/trebly/technical/
-atmospheric + genre & type filters), album/song search+import (Deezer) and gear submission, one
+atmospheric + genre & type filters), album/song search+import (Deezer) plus **manual album/song +
+gear submission** (`/submit-music`, `/submit-gear`), one
 `/[type]/[slug]` item page for all types, interactive compass with voting + average/all-votes
 toggle, gear price, **multiple genre tags** (music, from Last.fm top tags w/ Deezer fallback),
-per-item text reviews (own review editable
+**admin-only item description**, per-item text reviews (own review editable
 inline, **likes reorder reviews**), **item likes/favorites + My Favorites**, email/password auth,
-My Votes, recommendations, **admin moderation** (gear submits as `pending`; `is_admin`-gated
-`/admin` approval queue + inline admin edit/delete of any gear and any review),
+My Votes, recommendations, **admin moderation** (gear *and* manual music submit as `pending`;
+`is_admin`-gated `/admin` approval queue + inline admin edit/delete of any item — incl. album/song
+title/metadata/description — and any review),
 **viewport-pinned layout** (independent sidebar/content scroll on desktop), and full type-aware
 SEO (SSR, metadata, OG, JSON-LD, sitemap, robots). See `README.md` for how to run it.
 
@@ -394,16 +416,21 @@ SEO (SSR, metadata, OG, JSON-LD, sitemap, robots). See `README.md` for how to ru
 - **Search** (`/api/search?q=&type=`): `album`/`song` hit Deezer and import on click via the
   `openDeezerItem` server action; `gear` searches the local DB (`searchGear`) and links straight to
   the existing item. The toggle lives in `src/components/SearchPanel.tsx`.
-- **Gear submission/editing**: `/submit-gear` and `/[type]/[slug]/edit` both render the shared
-  `GearForm` (client). Image is a **pasted URL** (no upload). `submitGear` → `createGearItem`,
-  `updateGear` → `updateGearItem`, both request-scoped (RLS records/enforces `created_by`).
-  `deleteItem` → `deleteOwnItem`. Edit/Delete controls render on the item page for the creator **or
-  an admin** (Edit gear-only; Delete any item — RLS enforces it).
-- **Admin moderation**: gear submits as `status='pending'` and is hidden until approved. Admins
-  (`profiles.is_admin`, checked via `isCurrentUserAdmin()`) approve/reject at **`/admin`**
-  (`getPendingItems`, `approveGear`/`rejectGear` in `src/app/actions/admin.ts`) or inline on the
-  pending item page, can edit/delete any gear, and can delete any review (`deleteReview(reviewId,…)`).
-  Pending/rejected item pages `notFound()` for non-owner/non-admin viewers. See §6 "Admin role".
+- **Submission/editing**: gear → `/submit-gear` (`GearForm` → `submitGear` → `createGearItem`);
+  music → `/submit-music` (`MusicForm` → `submitMusic` → `createMusicItem`, `src/app/actions/music.ts`).
+  Both forms are client components; image is a **pasted URL** (no upload). The edit page
+  `/[type]/[slug]/edit` renders `GearForm` for gear, `MusicForm` for music. **Edit routing:** a
+  non-admin gear owner's edit → `updateGear` → `updateGearItem` (request-scoped, RLS-enforced); an
+  **admin's** edit of anything → `adminUpdateItem` (service-role) — `updateGear` branches on
+  `isCurrentUserAdmin()`, and `updateMusic` is admin-only. `deleteItem` → `deleteOwnItem`. On the item
+  page: Edit shows for gear (creator/admin) and music (admin only); Delete for creator/admin (any
+  item). The admin description field is gated behind `showDescription`.
+- **Admin moderation**: gear *and* music submit as `status='pending'` and stay hidden until approved
+  (Deezer imports are auto-`active`). Admins (`profiles.is_admin`, checked via `isCurrentUserAdmin()`)
+  approve/reject at **`/admin`** (`getPendingItems`, `approveGear`/`rejectGear` in
+  `src/app/actions/admin.ts`) or inline on the pending item page, can edit any item / delete any item,
+  and can delete any review (`deleteReview(reviewId,…)`). Pending/rejected item pages `notFound()` for
+  non-owner/non-admin viewers. See §6 "Admin role".
 - `next.config.ts` allows **any** image host (`https://**` and `http://**`) for `next/image`, AND
   every item-image `<Image>` uses **`unoptimized`** — the optimizer fetches arbitrary user-pasted
   gear hosts server-side and often fails (hotlink protection, bad content-type, private IPs), so

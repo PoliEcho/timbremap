@@ -11,6 +11,7 @@ export default function robots(): MetadataRoute.Robots {
         "/my-votes",
         "/my-favorites",
         "/submit-gear",
+        "/submit-music",
         "/admin",
         "/login",
         "/register",
