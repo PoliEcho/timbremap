@@ -25,6 +25,17 @@ export async function GET(request: NextRequest) {
     : "most_voted";
   const type = TYPES.includes(typeRaw as ItemType) ? (typeRaw as ItemType) : null;
 
-  const items = await getBrowseItems({ sort, genre: genre || null, type, limit: 30 });
+  const limitRaw = Number.parseInt(sp.get("limit") ?? "", 10);
+  const offsetRaw = Number.parseInt(sp.get("offset") ?? "", 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 60) : 30;
+  const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0;
+
+  const items = await getBrowseItems({
+    sort,
+    genre: genre || null,
+    type,
+    limit,
+    offset,
+  });
   return NextResponse.json({ items });
 }

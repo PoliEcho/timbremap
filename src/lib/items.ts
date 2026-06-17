@@ -318,6 +318,7 @@ export async function getBrowseItems(opts: {
   genre?: string | null;
   type?: ItemType | null;
   limit?: number;
+  offset?: number;
 }): Promise<BrowseItem[]> {
   const sort = opts.sort ?? "most_voted";
   const { column, ascending, placementOnly } = SORTS[sort];
@@ -332,10 +333,14 @@ export async function getBrowseItems(opts: {
   if (opts.genre) query = query.contains("genres", [opts.genre]);
   if (placementOnly) query = query.not(column, "is", null);
 
+  const limit = opts.limit ?? 48;
+  const offset = opts.offset ?? 0;
+
   query = query
     .order(column, { ascending, nullsFirst: false })
     .order("created_at", { ascending: false })
-    .limit(opts.limit ?? 48);
+    .order("id", { ascending: false })
+    .range(offset, offset + limit - 1);
 
   const { data } = await query;
   return (data as BrowseItem[]) ?? [];
