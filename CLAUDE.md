@@ -252,8 +252,14 @@ Implemented in Postgres via the Supabase CLI. Migrations:
     `most_technical`/`most_atmospheric` (avg_x — placement sorts only include voted items).
     Filters: `genre` (music-only) and `type`.
 - **Layout/scroll:** desktop pins the shell to the viewport (`body md:h-screen md:overflow-hidden`,
-  `AppShell md:h-screen`), so the sidebar (`md:h-screen md:overflow-y-auto`) and `<main>`
-  (`md:overflow-y-auto`) scroll independently; mobile keeps normal stacked page scroll.
+  `AppShell md:h-screen`), so the sidebar and `<main>` (`md:overflow-y-auto`) scroll independently.
+  The sidebar (`Sidebar.tsx`) is split into a **scrollable area** (logo + search + list,
+  `flex-1 overflow-y-auto`) and a **pinned, non-scrolling footer** (`AuthControls`, `shrink-0
+  border-t`) — the auth/account footer stays fixed at the bottom while only the list scrolls.
+  **Mobile is a hamburger drawer:** `SidebarShell.tsx` (client) wraps the sidebar content; on
+  mobile it renders a top bar with the logo + a hamburger button and slides the sidebar in as a
+  fixed overlay drawer (backdrop, body-scroll lock, auto-close on route change); on desktop (`md:`)
+  the drawer is `static` and always visible. Mobile `<main>` keeps normal page scroll.
 - **Gear moderation (BUILT):** submissions are inserted `status='pending'` (`createGearItem`) and
   stay **private** — the item page `notFound()`s for anyone but the creator/admin, and all public
   surfaces filter `status='active'` (browse, search, recommendations, genres, sitemap,

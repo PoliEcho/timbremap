@@ -3,6 +3,7 @@ import Image from "next/image";
 import SearchPanel from "@/components/SearchPanel";
 import SidebarList from "@/components/SidebarList";
 import AuthControls from "@/components/AuthControls";
+import SidebarShell from "@/components/SidebarShell";
 import { getBrowseItems, getGenres } from "@/lib/items";
 
 export default async function Sidebar() {
@@ -12,26 +13,30 @@ export default async function Sidebar() {
   ]);
 
   return (
-    <aside className="flex w-full flex-col gap-6 border-zinc-800 p-5 md:h-screen md:w-80 md:shrink-0 md:overflow-y-auto md:border-r lg:w-96">
-      <Link href="/" className="block">
-        <Image
-          src="/timbermap-logo.png"
-          alt="TimbreMap"
-          width={180}
-          height={56}
-          unoptimized
-          priority
-          className="h-auto w-40"
-        />
-      </Link>
+    <SidebarShell>
+      {/* Scrollable area: logo, search, item list */}
+      <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-5">
+        <Link href="/" className="hidden md:block">
+          <Image
+            src="/timbermap-logo.png"
+            alt="TimbreMap"
+            width={180}
+            height={56}
+            unoptimized
+            priority
+            className="h-auto w-40"
+          />
+        </Link>
 
-      <SearchPanel />
+        <SearchPanel />
 
-      <SidebarList initialItems={items} genres={genres} />
+        <SidebarList initialItems={items} genres={genres} />
+      </div>
 
-      <div className="border-t border-zinc-800 pt-4 md:mt-auto">
+      {/* Pinned, non-scrolling footer */}
+      <div className="shrink-0 border-t border-zinc-800 p-5">
         <AuthControls />
       </div>
-    </aside>
+    </SidebarShell>
   );
 }
