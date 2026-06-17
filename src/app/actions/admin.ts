@@ -15,8 +15,11 @@ async function setItemStatus(
 ): Promise<void> {
   if (!(await isCurrentUserAdmin())) return;
 
-  const supabase = await createClient();
-  await supabase.from("items").update({ status }).eq("id", itemId);
+  // `status` is no longer UPDATE-grantable to the `authenticated` role
+  // (migration ...000013 closed the moderation-bypass hole), so write it via
+  // the service-role client — same pattern as setUserAdmin/is_admin.
+  const admin = createAdminClient();
+  await admin.from("items").update({ status }).eq("id", itemId);
 
   revalidatePath("/admin");
   revalidatePath("/");
