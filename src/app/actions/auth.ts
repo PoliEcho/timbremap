@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
-export type AuthState = { error: string } | null;
+export type AuthState = { error: string } | { message: string } | null;
 
 /** Resolve the site origin for OAuth redirects (prefers the live request host). */
 async function siteOrigin(): Promise<string> {
@@ -47,12 +47,23 @@ export async function register(_prev: AuthState, formData: FormData): Promise<Au
   if (password.length < 6) return { error: "Password must be at least 6 characters." };
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signUp({
+  const origin = await siteOrigin();
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: displayName ? { display_name: displayName } : undefined },
+    options: {
+      data: displayName ? { display_name: displayName } : undefined,
+      emailRedirectTo: `${origin}/auth/confirm`,
+    },
   });
   if (error) return { error: error.message };
+
+  // With email confirmation enabled, signUp returns no session — the user must
+  // click the link in their email first. Show a "check your email" message
+  // instead of pretending they're logged in.
+  if (!data.session) {
+    return { message: "Check your email for a confirmation link to finish signing up." };
+  }
 
   revalidatePath("/", "layout");
   redirect("/");

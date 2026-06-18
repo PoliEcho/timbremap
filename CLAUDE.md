@@ -256,6 +256,13 @@ Implemented in Postgres via the Supabase CLI. Migrations:
   `SUPABASE_AUTH_GOOGLE_CLIENT_ID`/`SUPABASE_AUTH_GOOGLE_SECRET` from env for local dev (set them
   before `supabase start`); in hosted Supabase, configure it under Authentication → Providers.
   Google's name populates `display_name` via the trigger (migration `…000016`).
+  **Email confirmation:** email/password signup requires confirming the email first
+  (`enable_confirmations = true` in `config.toml`; in hosted Supabase it's the Email provider's
+  "Confirm email" toggle). `register` returns no session in that case, so it shows a "check your
+  email" message instead of redirecting; the confirmation email links to `/auth/confirm`
+  (`src/app/auth/confirm/route.ts`), which `verifyOtp`s the `token_hash` and redirects to `/`. The
+  hosted email template must point at `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`.
+  Locally, confirmation emails are caught by Inbucket (`http://localhost:54324`).
 - **Coordinates:** `x` = Technical(−1) ↔ Atmospheric(+1), `y` = Bass(−1) ↔ Treble(+1), floats in `[-1, 1]`.
 - **Average placement:** mean (not median/density).
 - **Recommendations:** Euclidean nearest by category, top 3.

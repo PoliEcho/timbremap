@@ -43,8 +43,9 @@ enable_signup = true
 [auth.email]
 enable_signup = true
 double_confirm_changes = true
-# Local dev: let users sign in immediately without email confirmation.
-enable_confirmations = false
+# Require users to confirm their email before they can sign in. Locally, the
+# confirmation email is captured by Inbucket (http://localhost:54324).
+enable_confirmations = true
 
 # Google OAuth. Create credentials at https://console.cloud.google.com/apis/credentials
 # (Authorized redirect URI: <SUPABASE_URL>/auth/v1/callback). Set the two env vars

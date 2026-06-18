@@ -36,7 +36,8 @@ export default function AuthForm({
 }) {
   const action = mode === "login" ? login : register;
   const [state, formAction, pending] = useActionState<AuthState, FormData>(action, null);
-  const error = state?.error ?? initialError;
+  const error = (state && "error" in state ? state.error : undefined) ?? initialError;
+  const message = state && "message" in state ? state.message : undefined;
 
   return (
     <div className="flex flex-col gap-4">
@@ -93,6 +94,7 @@ export default function AuthForm({
       </label>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
+      {message && <p className="text-sm text-emerald-400">{message}</p>}
 
       <button
         type="submit"
